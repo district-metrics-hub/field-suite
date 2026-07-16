@@ -1,0 +1,124 @@
+# publish.yml -- GitHub Actions release workflow (DRAFT)
+#
+# Lives in the NEUTRAL org's release repo at: .github/workflows/publish.yml
+# It builds/collects the installer, SIGNS latest.json with the private key from
+# secrets, and publishes a GitHub Release with UhaulSuiteSetup.exe + latest.json
+# as assets -- from which the app polls the stable
+#   https://github.com/<ORG>/<REPO>/releases/latest/download/latest.json
+#
+# ANONYMITY NOTES (read README.md "anonymity" for the full picture):
+#   * Releases created by this workflow are attributed to `github-actions[bot]`,
+#     NOT to the repo owner. Do not add a step that sets a real name/email.
+#   * The org should be NEUTRAL (no personal/company name) with PRIVATE
+#     membership so the owner isn't listed publicly.
+#   * Commits/tags that TRIGGER this must not carry the owner's identity either
+#     -- configure the committing identity as a neutral bot (e.g. git config
+#     user.name "release-bot" / user.email "release-bot@users.noreply.github.com")
+#     or push tags via a bot token. This workflow never commits, so its own
+#     footprint is just the bot-attributed Release.
+#   * The private signing key is ONLY ever `secrets.ED25519_PRIVATE_KEY_B64`.
+#     It is never printed, never written to the repo, never an output.
+
+name: Publish signed release
+
+on:
+  # Tag push like v1.2.0 is the normal trigger...
+  push:
+    tags:
+      - "v*"
+  # ...and a manual button for re-runs / testing.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 1.2.0). Defaults to the tag."
+        required: false
+        default: ""
+
+permissions:
+  contents: write        # required to create a Release + upload assets
+
+jobs:
+  publish:
+    runs-on: windows-latest    # match the app's build target (Windows installer)
+    steps:
+      - name: Checkout release repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ---- 1) Obtain the installer -------------------------------------------
+      # Option A (typical): the installer was built in a SEPARATE private repo's
+      # CI and uploaded as an artifact / attached here. Fetch/download it into
+      # ./dist/UhaulSuiteSetup.exe. This is a placeholder -- wire it to however
+      # your build actually produces the .exe.
+      #
+      # Option B: build it right here (if the build lives in this repo).
+      #
+      # TODO(build): replace this step with your real installer source. The rest
+      # of the job only needs ./dist/UhaulSuiteSetup.exe to exist.
+      - name: Stage installer
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ ! -f dist/UhaulSuiteSetup.exe ]; then
+            echo "TODO: place the built UhaulSuiteSetup.exe at dist/ (download"
+            echo "artifact from the build repo, or build it in a prior step)."
+            exit 1
+          fi
+
+      # ---- 2) Resolve the version --------------------------------------------
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          V="${{ github.event.inputs.version }}"
+          if [ -z "$V" ]; then
+            # strip refs/tags/v -> 1.2.0
+            V="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Publishing version: $V"
+
+      # ---- 3) Sign latest.json ------------------------------------------------
+      # sign_release.py + ed25519_pure.py must be present in this repo (vendor
+      # them, or add the app repo as a submodule/subtree). The private key comes
+      # from the secret -- never echoed.
+      - name: Build + sign latest.json
+        shell: bash
+        env:
+          ED25519_PRIVATE_KEY_B64: ${{ secrets.ED25519_PRIVATE_KEY_B64 }}
+        run: |
+          python sign_release.py sign \
+            --installer dist/UhaulSuiteSetup.exe \
+            --version "${{ steps.ver.outputs.version }}" \
+            --notes @RELEASE_NOTES.md \
+            --org "${{ github.repository_owner }}" \
+            --repo "$(echo '${{ github.repository }}' | cut -d/ -f2)" \
+            --out dist/latest.json
+          echo "----- latest.json (signature is public) -----"
+          cat dist/latest.json
+
+      # ---- 4) Create the Release with both assets ----------------------------
+      # softprops/gh-release creates a Release attributed to github-actions[bot].
+      # The 'latest' redirect the app polls always points at the newest release,
+      # so the asset names (latest.json, UhaulSuiteSetup.exe) are the stable URL.
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ steps.ver.outputs.version }}
+          # Do NOT set author/committer to a real identity -- keep bot attribution.
+          body_path: RELEASE_NOTES.md
+          files: |
+            dist/UhaulSuiteSetup.exe
+            dist/latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+# Result: the app's baked-in raw URL
+#   https://github.com/<ORG>/<REPO>/releases/latest/download/latest.json
+# now serves this signed manifest; UhaulSuiteSetup.exe sits next to it. The app
+# verifies the signature with the baked-in public key before showing the pill.
