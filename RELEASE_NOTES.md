@@ -1,7 +1,8 @@
-# v0.2.2
+# v0.2.3
 
-- Fixes automatic update checking: the dashboard can now reliably detect when a newer version is available and show the update pill.
+- License enforcement is now active on a fresh install: an unlicensed machine lands on the lock screen (showing its machine ID) until a machine-bound license is entered.
 
-Also included (from v0.2.1):
+Also included:
+- Reliable automatic update checking (update pill).
 - Loading progress bars with a per-item checklist on every skill scrape.
 - Onboarding: the District field shows your district number, and its member markets resolve automatically; the single-market field is hidden for district managers.
