@@ -1,10 +1,9 @@
-# v0.2.4
+# v0.2.5
 
-- Updates now apply cleanly on their own: installing a new version stops the old server, and the dashboard restarts into the new code automatically — no manual restart, no stale page.
-- The dashboard now shows its installed version in the top bar, so you can confirm an update landed.
-- The update pill clears itself as soon as you're on the latest version (it no longer lingers after updating).
+- Fixes the Python runtime so it is fully self-contained: the dashboard's dependencies now install into the app's own runtime instead of relying on a machine-wide Python. This resolves "the server won't start" on a clean machine.
+- The runtime now self-repairs: if an update ever leaves it incomplete, simply launching the dashboard rebuilds it automatically (offline) — no manual steps.
 
 Also included:
+- Self-applying updates (the old server is stopped and the new one starts automatically) with no-cache so a new version always loads.
+- The dashboard shows its installed version, and the update pill clears once you're current.
 - License enforcement on a fresh install (machine-bound lock screen until activated).
-- Loading progress bars with a per-item checklist on every skill scrape.
-- Onboarding: the District field shows your district number, and its member markets resolve automatically.
